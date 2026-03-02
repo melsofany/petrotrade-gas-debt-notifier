@@ -1,22 +1,22 @@
-# Updated Dockerfile
-
-# Base image
+# Use the official Node.js image.
 FROM node:14
 
-# Set the working directory
-WORKDIR /app
+# Set the working directory in the container.
+WORKDIR /usr/src/app
 
-# Install dependencies using npm ci with fallback to npm install
+# Copy the package.json and package-lock.json files.
 COPY package*.json ./
-RUN npm ci || npm install
 
-# Install system dependencies with --no-install-recommends
-RUN apt-get update && apt-get install --no-install-recommends -y <system_dependencies> \ 
-    && apt-get clean \ 
-    && rm -rf /var/lib/apt/lists/*
+# Install system dependencies and application dependencies.
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    && npm ci
 
-# Copy the rest of the application code
+# Copy the rest of the application code.
 COPY . .
 
-# Start the application
+# Expose the application port.
+EXPOSE 8080
+
+# Command to run the application.
 CMD [ "npm", "start" ]
