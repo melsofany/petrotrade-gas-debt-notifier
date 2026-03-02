@@ -112,15 +112,9 @@ async function initWhatsApp() {
       }
     }
 
-    // Fallback: Try to use puppeteer-core to find installed browser
+    // For Render, if no path found, it usually means the Puppeteer Buildpack is missing
     if (!puppeteerOptions.executablePath) {
-      try {
-        const puppeteer = require('puppeteer');
-        puppeteerOptions.executablePath = puppeteer.executablePath();
-        console.log('Using Puppeteer default path:', puppeteerOptions.executablePath);
-      } catch (e) {
-        console.warn('Could not determine Puppeteer executable path automatically');
-      }
+      console.warn('WARNING: No browser executable found. Please ensure the Puppeteer Buildpack is added to your Render service.');
     }
 
     whatsappClient = new Client({
