@@ -95,26 +95,24 @@ async function initWhatsApp() {
       ]
     };
 
-    // Enhanced browser detection for Render/Cloud environments
-    const possiblePaths = [
-      '/usr/bin/google-chrome',
-      '/usr/bin/chromium-browser',
-      '/usr/bin/chromium',
-      '/opt/render/project/.cache/puppeteer/chrome/linux-145.0.7632.77/chrome-linux64/chrome',
-      '/opt/render/project/src/.cache/puppeteer/chrome/linux-145.0.7632.77/chrome-linux64/chrome'
-    ];
-
-    for (const p of possiblePaths) {
-      if (fs.existsSync(p)) {
-        puppeteerOptions.executablePath = p;
-        console.log('Using browser at:', p);
-        break;
+    // Use Puppeteer's built-in detection which respects the .puppeteerrc.cjs config
+    try {
+      const puppeteer = require('puppeteer');
+      puppeteerOptions.executablePath = puppeteer.executablePath();
+      console.log('Using Puppeteer detected browser at:', puppeteerOptions.executablePath);
+    } catch (e) {
+      console.error('Failed to detect Puppeteer executable path:', e);
+      // Fallback for manual paths if needed
+      const fallbackPaths = [
+        path.join(__dirname, '.cache', 'puppeteer', 'chrome', 'linux-145.0.7632.77', 'chrome-linux64', 'chrome'),
+        '/usr/bin/google-chrome'
+      ];
+      for (const p of fallbackPaths) {
+        if (fs.existsSync(p)) {
+          puppeteerOptions.executablePath = p;
+          break;
+        }
       }
-    }
-
-    // For Render, if no path found, it usually means the Puppeteer Buildpack is missing
-    if (!puppeteerOptions.executablePath) {
-      console.warn('WARNING: No browser executable found. Please ensure the Puppeteer Buildpack is added to your Render service.');
     }
 
     whatsappClient = new Client({
