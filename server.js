@@ -1,5 +1,6 @@
 const express = require('express');
 const session = require('express-session');
+const MemoryStore = require('memorystore')(session);
 const { google } = require('googleapis');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
@@ -16,10 +17,13 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'secret-key-change-in-production',
+  cookie: { maxAge: 86400000 },
+  store: new MemoryStore({
+    checkPeriod: 86400000 // prune expired entries every 24h
+  }),
   resave: false,
-  saveUninitialized: true,
-  cookie: { secure: false }
+  secret: process.env.SESSION_SECRET || 'secret-key-change-in-production',
+  saveUninitialized: true
 }));
 
 // Authentication middleware
@@ -80,10 +84,21 @@ async function initWhatsApp() {
     if (process.env.RENDER) {
       // Common paths for Puppeteer installed browsers on Render
       const possiblePaths = [
-        '/opt/render/.cache/puppeteer/chrome/linux-145.0.7632.77/chrome-linux64/chrome',
         '/usr/bin/google-chrome',
-        '/usr/bin/chromium-browser'
+        '/usr/bin/chromium-browser',
+        '/opt/render/.cache/puppeteer/chrome/linux-145.0.7632.77/chrome-linux64/chrome'
       ];
+      // Try to find any chrome executable in the puppeteer cache
+      try {
+        const cacheBase = '/opt/render/.cache/puppeteer/chrome';
+        if (fs.existsSync(cacheBase)) {
+          const versions = fs.readdirSync(cacheBase);
+          for (const v of versions) {
+            const p = path.join(cacheBase, v, 'chrome-linux64/chrome');
+            if (fs.existsSync(p)) possiblePaths.push(p);
+          }
+        }
+      } catch (e) { console.error('Error scanning cache:', e); }
       for (const p of possiblePaths) {
         if (fs.existsSync(p)) {
           executablePath = p;
