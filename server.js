@@ -79,7 +79,7 @@ async function initWhatsApp() {
   try {
     let sessionPath = path.join(__dirname, '.wwebjs_auth');
     
-    // Optimized Puppeteer launch for Render
+    // Optimized Puppeteer launch for Render (using puppeteer-core)
     const puppeteerOptions = {
       headless: "new",
       args: [
@@ -90,39 +90,31 @@ async function initWhatsApp() {
         '--no-first-run',
         '--no-zygote',
         '--single-process',
-        '--disable-gpu'
+        '--disable-gpu',
+        '--disable-extensions'
       ]
     };
 
-    // If running on Render, try to find Chrome in local cache or system
+    // If running on Render, use the pre-installed system Chromium
     if (process.env.RENDER) {
-      const localCachePath = path.join(__dirname, '.puppeteer_cache');
       const possiblePaths = [
         '/usr/bin/google-chrome',
         '/usr/bin/chromium-browser',
-        '/usr/bin/chromium'
+        '/usr/bin/chromium',
+        '/opt/render/project/.cache/puppeteer/chrome/linux-145.0.7632.77/chrome-linux64/chrome'
       ];
-
-      // Scan local cache for chrome
-      try {
-        if (fs.existsSync(localCachePath)) {
-          const chromeDir = path.join(localCachePath, 'chrome');
-          if (fs.existsSync(chromeDir)) {
-            const versions = fs.readdirSync(chromeDir);
-            for (const v of versions) {
-              const p = path.join(chromeDir, v, 'chrome-linux64', 'chrome');
-              if (fs.existsSync(p)) possiblePaths.unshift(p); // Prefer local cache
-            }
-          }
-        }
-      } catch (e) { console.error('Error scanning local cache:', e); }
 
       for (const p of possiblePaths) {
         if (fs.existsSync(p)) {
           puppeteerOptions.executablePath = p;
-          console.log('Found Chrome at:', p);
+          console.log('Using system browser at:', p);
           break;
         }
+      }
+      
+      // If no executable path found, it might fail, but Render usually has one of these
+      if (!puppeteerOptions.executablePath) {
+        console.warn('WARNING: No browser executable found for Puppeteer on Render.');
       }
     }
 
