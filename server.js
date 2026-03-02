@@ -95,23 +95,30 @@ async function initWhatsApp() {
       ]
     };
 
-    // Use Puppeteer's built-in detection which respects the .puppeteerrc.cjs config
-    try {
-      const puppeteer = require('puppeteer');
-      puppeteerOptions.executablePath = puppeteer.executablePath();
-      console.log('Using Puppeteer detected browser at:', puppeteerOptions.executablePath);
-    } catch (e) {
-      console.error('Failed to detect Puppeteer executable path:', e);
-      // Fallback for manual paths if needed
-      const fallbackPaths = [
-        path.join(__dirname, '.cache', 'puppeteer', 'chrome', 'linux-145.0.7632.77', 'chrome-linux64', 'chrome'),
-        '/usr/bin/google-chrome'
-      ];
-      for (const p of fallbackPaths) {
-        if (fs.existsSync(p)) {
-          puppeteerOptions.executablePath = p;
-          break;
-        }
+    // Priority: Docker/System Google Chrome
+    const systemPaths = [
+      '/usr/bin/google-chrome',
+      '/usr/bin/google-chrome-stable',
+      '/usr/bin/chromium-browser',
+      '/usr/bin/chromium'
+    ];
+
+    for (const p of systemPaths) {
+      if (fs.existsSync(p)) {
+        puppeteerOptions.executablePath = p;
+        console.log('Using system browser at:', p);
+        break;
+      }
+    }
+
+    // Fallback: Puppeteer's own detection
+    if (!puppeteerOptions.executablePath) {
+      try {
+        const puppeteer = require('puppeteer');
+        puppeteerOptions.executablePath = puppeteer.executablePath();
+        console.log('Using Puppeteer detected browser at:', puppeteerOptions.executablePath);
+      } catch (e) {
+        console.warn('Could not determine Puppeteer executable path automatically');
       }
     }
 
