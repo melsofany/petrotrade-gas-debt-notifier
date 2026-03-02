@@ -86,15 +86,24 @@ async function initWhatsApp() {
       const possiblePaths = [
         '/usr/bin/google-chrome',
         '/usr/bin/chromium-browser',
-        '/opt/render/.cache/puppeteer/chrome/linux-145.0.7632.77/chrome-linux64/chrome'
+        path.join(__dirname, '.cache', 'puppeteer', 'chrome', 'linux-145.0.7632.77', 'chrome-linux64', 'chrome')
       ];
-      // Try to find any chrome executable in the puppeteer cache
+      // Try to find any chrome executable in the local puppeteer cache
       try {
-        const cacheBase = '/opt/render/.cache/puppeteer/chrome';
-        if (fs.existsSync(cacheBase)) {
-          const versions = fs.readdirSync(cacheBase);
+        const localCacheBase = path.join(__dirname, '.cache', 'puppeteer', 'chrome');
+        if (fs.existsSync(localCacheBase)) {
+          const versions = fs.readdirSync(localCacheBase);
           for (const v of versions) {
-            const p = path.join(cacheBase, v, 'chrome-linux64/chrome');
+            const p = path.join(localCacheBase, v, 'chrome-linux64', 'chrome');
+            if (fs.existsSync(p)) possiblePaths.push(p);
+          }
+        }
+        // Also check Render's default cache as fallback
+        const renderCacheBase = '/opt/render/.cache/puppeteer/chrome';
+        if (fs.existsSync(renderCacheBase)) {
+          const versions = fs.readdirSync(renderCacheBase);
+          for (const v of versions) {
+            const p = path.join(renderCacheBase, v, 'chrome-linux64', 'chrome');
             if (fs.existsSync(p)) possiblePaths.push(p);
           }
         }
