@@ -95,26 +95,31 @@ async function initWhatsApp() {
       ]
     };
 
-    // If running on Render, use the pre-installed system Chromium
-    if (process.env.RENDER) {
-      const possiblePaths = [
-        '/usr/bin/google-chrome',
-        '/usr/bin/chromium-browser',
-        '/usr/bin/chromium',
-        '/opt/render/project/.cache/puppeteer/chrome/linux-145.0.7632.77/chrome-linux64/chrome'
-      ];
+    // Enhanced browser detection for Render/Cloud environments
+    const possiblePaths = [
+      '/usr/bin/google-chrome',
+      '/usr/bin/chromium-browser',
+      '/usr/bin/chromium',
+      '/opt/render/project/.cache/puppeteer/chrome/linux-145.0.7632.77/chrome-linux64/chrome',
+      '/opt/render/project/src/.cache/puppeteer/chrome/linux-145.0.7632.77/chrome-linux64/chrome'
+    ];
 
-      for (const p of possiblePaths) {
-        if (fs.existsSync(p)) {
-          puppeteerOptions.executablePath = p;
-          console.log('Using system browser at:', p);
-          break;
-        }
+    for (const p of possiblePaths) {
+      if (fs.existsSync(p)) {
+        puppeteerOptions.executablePath = p;
+        console.log('Using browser at:', p);
+        break;
       }
-      
-      // If no executable path found, it might fail, but Render usually has one of these
-      if (!puppeteerOptions.executablePath) {
-        console.warn('WARNING: No browser executable found for Puppeteer on Render.');
+    }
+
+    // Fallback: Try to use puppeteer-core to find installed browser
+    if (!puppeteerOptions.executablePath) {
+      try {
+        const puppeteer = require('puppeteer');
+        puppeteerOptions.executablePath = puppeteer.executablePath();
+        console.log('Using Puppeteer default path:', puppeteerOptions.executablePath);
+      } catch (e) {
+        console.warn('Could not determine Puppeteer executable path automatically');
       }
     }
 
