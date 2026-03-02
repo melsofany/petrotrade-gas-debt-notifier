@@ -4,9 +4,7 @@
   "description": "Send WhatsApp messages from Google Sheets with dashboard",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "build": "npm install && npx puppeteer browsers install chrome",
-    "postinstall": "npx puppeteer browsers install chrome"
+    "start": "node server.js"
   },
   "dependencies": {
     "dotenv": "^16.0.3",

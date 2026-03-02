@@ -79,39 +79,32 @@ async function initWhatsApp() {
   try {
     let sessionPath = path.join(__dirname, '.wwebjs_auth');
     
-    // Explicitly find Chrome path on Render
-    let executablePath = '';
+    // Optimized Puppeteer launch for Render
+    const puppeteerOptions = {
+      headless: "new",
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-gpu'
+      ]
+    };
+
+    // If running on Render, try to use the system installed Chrome/Chromium
     if (process.env.RENDER) {
-      // Common paths for Puppeteer installed browsers on Render
       const possiblePaths = [
         '/usr/bin/google-chrome',
         '/usr/bin/chromium-browser',
-        path.join(__dirname, '.cache', 'puppeteer', 'chrome', 'linux-145.0.7632.77', 'chrome-linux64', 'chrome')
+        '/usr/bin/chromium'
       ];
-      // Try to find any chrome executable in the local puppeteer cache
-      try {
-        const localCacheBase = path.join(__dirname, '.cache', 'puppeteer', 'chrome');
-        if (fs.existsSync(localCacheBase)) {
-          const versions = fs.readdirSync(localCacheBase);
-          for (const v of versions) {
-            const p = path.join(localCacheBase, v, 'chrome-linux64', 'chrome');
-            if (fs.existsSync(p)) possiblePaths.push(p);
-          }
-        }
-        // Also check Render's default cache as fallback
-        const renderCacheBase = '/opt/render/.cache/puppeteer/chrome';
-        if (fs.existsSync(renderCacheBase)) {
-          const versions = fs.readdirSync(renderCacheBase);
-          for (const v of versions) {
-            const p = path.join(renderCacheBase, v, 'chrome-linux64', 'chrome');
-            if (fs.existsSync(p)) possiblePaths.push(p);
-          }
-        }
-      } catch (e) { console.error('Error scanning cache:', e); }
       for (const p of possiblePaths) {
         if (fs.existsSync(p)) {
-          executablePath = p;
-          console.log('Found Chrome at:', p);
+          puppeteerOptions.executablePath = p;
+          console.log('Using system Chrome at:', p);
           break;
         }
       }
@@ -119,20 +112,7 @@ async function initWhatsApp() {
 
     whatsappClient = new Client({
       authStrategy: new LocalAuth({ dataPath: sessionPath }),
-      puppeteer: { 
-        headless: true,
-        executablePath: executablePath || undefined,
-        args: [
-          '--no-sandbox', 
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--single-process',
-          '--disable-gpu'
-        ] 
-      }
+      puppeteer: puppeteerOptions
     });
 
     whatsappClient.on('qr', (qr) => {
