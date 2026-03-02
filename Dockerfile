@@ -30,7 +30,7 @@ RUN apt-get update && apt-get install -y \
     libxcomposite1 \
     libxcursor1 \
     libxdamage1 \
-    libext6 \
+    libxext6 \
     libxfixes3 \
     libxi6 \
     libxrandr2 \
@@ -54,7 +54,7 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies (using puppeteer-core to avoid redundant chrome download)
+# Install dependencies
 RUN npm install
 
 # Copy the rest of the application
