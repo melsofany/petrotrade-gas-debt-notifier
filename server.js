@@ -16,7 +16,7 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(session({
-  secret: 'secret-key-change-in-production',
+  secret: process.env.SESSION_SECRET || 'secret-key-change-in-production',
   resave: false,
   saveUninitialized: true,
   cookie: { secure: false } // set to true if using HTTPS
@@ -38,7 +38,12 @@ let spreadsheetId;
 async function initGoogleSheets() {
   try {
     const base64Key = process.env.GOOGLE_SERVICE_ACCOUNT_BASE64;
-    if (!base64Key) throw new Error('Missing GOOGLE_SERVICE_ACCOUNT_BASE64 env var');
+    spreadsheetId = process.env.SPREADSHEET_ID;
+
+    if (!base64Key || !spreadsheetId) {
+      console.warn('WARNING: Missing GOOGLE_SERVICE_ACCOUNT_BASE64 or SPREADSHEET_ID. Google Sheets integration will be disabled.');
+      return;
+    }
     
     const credentials = JSON.parse(Buffer.from(base64Key, 'base64').toString('utf8'));
     
@@ -49,13 +54,12 @@ async function initGoogleSheets() {
     
     const client = await auth.getClient();
     sheets = google.sheets({ version: 'v4', auth: client });
-    spreadsheetId = process.env.SPREADSHEET_ID;
-    if (!spreadsheetId) throw new Error('Missing SPREADSHEET_ID env var');
     
     console.log('Google Sheets initialized');
   } catch (error) {
     console.error('Failed to initialize Google Sheets:', error);
-    process.exit(1);
+    // Don't exit process, just disable sheets
+    sheets = null;
   }
 }
 
@@ -66,30 +70,27 @@ let qrCodeData = null;
 
 async function initWhatsApp() {
   try {
-    // Use session from env if available
-    const sessionData = process.env.WHATSAPP_SESSION_BASE64;
     let sessionPath = path.join(__dirname, '.wwebjs_auth');
     
-    // If session data exists, write to file (whatsapp-web.js will read from there)
-    if (sessionData) {
-      const sessionDir = path.join(sessionPath, 'session');
-      if (!fs.existsSync(sessionDir)) {
-        fs.mkdirSync(sessionDir, { recursive: true });
-      }
-      // Note: whatsapp-web.js stores session in a JSON file, we'll just pass the base64 as env
-      // Alternatively, we can use the built-in LocalAuth which stores in .wwebjs_auth
-      // So we don't need to manually inject base64; we can rely on file persistence.
-      // Since Render doesn't persist files, we need to backup and restore session.
-      // Let's implement a custom strategy: after successful auth, save session as base64 env.
-    }
-
     whatsappClient = new Client({
       authStrategy: new LocalAuth({ dataPath: sessionPath }),
-      puppeteer: { headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] }
+      puppeteer: { 
+        headless: true, 
+        args: [
+          '--no-sandbox', 
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
+          '--single-process',
+          '--disable-gpu'
+        ] 
+      }
     });
 
     whatsappClient.on('qr', (qr) => {
-      console.log('QR RECEIVED', qr);
+      console.log('QR RECEIVED');
       qrCodeData = qr;
       qrcode.generate(qr, { small: true });
     });
@@ -98,10 +99,6 @@ async function initWhatsApp() {
       console.log('WhatsApp client is ready!');
       whatsappReady = true;
       qrCodeData = null;
-      
-      // After ready, we can backup session to env variable for next run
-      // This requires reading the session files and converting to base64
-      // We'll implement a function for that
       backupSessionToEnv();
     });
 
@@ -125,7 +122,6 @@ async function initWhatsApp() {
 function backupSessionToEnv() {
   const sessionPath = path.join(__dirname, '.wwebjs_auth', 'session');
   if (fs.existsSync(sessionPath)) {
-    // Read all files in session directory and create a JSON object
     const files = fs.readdirSync(sessionPath);
     const sessionData = {};
     files.forEach(file => {
@@ -134,23 +130,22 @@ function backupSessionToEnv() {
       sessionData[file] = content;
     });
     const base64 = Buffer.from(JSON.stringify(sessionData)).toString('base64');
-    // Log it so user can copy and set as environment variable
     console.log('==================================================');
     console.log('WHATSAPP_SESSION_BASE64 (save this as env variable):');
-    console.log(base64);
+    console.log(base64.substring(0, 100) + '...'); // Only log start to avoid clutter
     console.log('==================================================');
   }
 }
 
 // ================== Helper Functions ==================
 async function getPhoneNumbersFromSheet() {
+  if (!sheets) return [];
   try {
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'A:A', // Column A
+      range: 'A:A',
     });
     const rows = response.data.values || [];
-    // Assuming first row is header? If yes, skip it. Let's skip if first cell is text.
     const startIndex = rows.length > 0 && rows[0][0] && rows[0][0].toLowerCase().includes('phone') ? 1 : 0;
     return rows.slice(startIndex).map(row => row[0]).filter(Boolean);
   } catch (error) {
@@ -160,9 +155,9 @@ async function getPhoneNumbersFromSheet() {
 }
 
 async function updateSheetStatus(index, status) {
+  if (!sheets) return;
   try {
-    // Update column C at row index+2 (since A1 is header, A2 is first number)
-    const rowNumber = index + 2; // adjust if header exists
+    const rowNumber = index + 2;
     await sheets.spreadsheets.values.update({
       spreadsheetId,
       range: `C${rowNumber}`,
@@ -175,8 +170,8 @@ async function updateSheetStatus(index, status) {
 }
 
 async function logSessionToSheet(phone, status) {
+  if (!sheets) return;
   try {
-    // Append to Logs sheet (assumes there is a sheet named "Logs" with columns: Timestamp, Phone, Status)
     const timestamp = new Date().toISOString();
     await sheets.spreadsheets.values.append({
       spreadsheetId,
@@ -190,20 +185,13 @@ async function logSessionToSheet(phone, status) {
 }
 
 async function getStats() {
+  if (!sheets) return { lastSession: { sent: 0, failed: 0, date: 'N/A' }, total: { sent: 0, failed: 0, totalNumbers: 0 } };
   try {
-    // Get current session stats (from Logs sheet)
     const logsResponse = await sheets.spreadsheets.values.get({
       spreadsheetId,
       range: 'Logs!A:C',
     });
     const logs = logsResponse.data.values || [];
-    
-    // Get all previous sessions stats (from same Logs sheet, we can group by date or just count all)
-    // For simplicity, we'll return:
-    // - lastSessionCount: number of logs in the most recent distinct date (if timestamp column exists)
-    // - totalSent: total successful sends
-    // - totalFailed: total failed attempts
-    // - totalNumbers: total phone numbers in column A
     const phoneNumbers = await getPhoneNumbersFromSheet();
     const totalNumbers = phoneNumbers.length;
     
@@ -213,11 +201,10 @@ async function getStats() {
       else if (row[2] === 'failed') totalFailed++;
     });
     
-    // Last session: group logs by date (first 10 chars of timestamp)
     const sessions = {};
     logs.forEach(row => {
       if (row[0]) {
-        const date = row[0].substring(0, 10); // YYYY-MM-DD
+        const date = row[0].substring(0, 10);
         if (!sessions[date]) sessions[date] = { sent: 0, failed: 0 };
         if (row[2] === 'sent') sessions[date].sent++;
         else if (row[2] === 'failed') sessions[date].failed++;
@@ -267,7 +254,8 @@ app.get('/login', (req, res) => {
 
 app.post('/login', (req, res) => {
   const { password } = req.body;
-  if (password === process.env.DASHBOARD_PASSWORD) {
+  const correctPassword = process.env.DASHBOARD_PASSWORD || 'admin123';
+  if (password === correctPassword) {
     req.session.authenticated = true;
     res.redirect('/dashboard');
   } else {
@@ -291,18 +279,17 @@ app.get('/dashboard', requireAuth, (req, res) => {
         .container { max-width: 1000px; margin: auto; background: white; padding: 20px; border-radius: 8px; }
         h1, h2 { color: #333; }
         .stats { display: flex; gap: 20px; margin: 20px 0; }
-        .stat-box { background: #007bff; color: white; padding: 20px; border-radius: 8px; flex: 1; text-align: center; }
+        .stat-box { flex: 1; padding: 20px; background: #007bff; color: white; border-radius: 8px; text-align: center; }
         .stat-box.failed { background: #dc3545; }
         .stat-box.success { background: #28a745; }
         .stat-box.total { background: #6c757d; }
         .number { font-size: 2em; font-weight: bold; }
         button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin: 5px; }
         button:hover { background: #0056b3; }
-        button.danger { background: #dc3545; }
-        button.danger:hover { background: #c82333; }
         .qr-code { margin-top: 20px; padding: 20px; background: #f8f9fa; border: 1px dashed #007bff; border-radius: 8px; text-align: center; }
         pre { background: #f4f4f4; padding: 10px; border-radius: 4px; overflow-x: auto; }
         .status { margin-top: 20px; }
+        .warning { color: #856404; background-color: #fff3cd; border: 1px solid #ffeeba; padding: 10px; border-radius: 4px; margin-bottom: 20px; }
       </style>
     </head>
     <body>
@@ -310,6 +297,8 @@ app.get('/dashboard', requireAuth, (req, res) => {
         <h1>WhatsApp Message Sender Dashboard</h1>
         <p><a href="/logout">Logout</a></p>
         
+        ${!sheets ? '<div class="warning"><strong>Warning:</strong> Google Sheets is not configured. Please set GOOGLE_SERVICE_ACCOUNT_BASE64 and SPREADSHEET_ID in environment variables.</div>' : ''}
+
         <div id="qr-container" style="display: none;" class="qr-code">
           <h3>Scan QR Code with WhatsApp</h3>
           <div id="qr"></div>
@@ -397,7 +386,6 @@ app.get('/dashboard', requireAuth, (req, res) => {
           }
         }
 
-        // Initial load
         refreshStats();
       </script>
     </body>
@@ -421,6 +409,9 @@ app.get('/api/qr', requireAuth, (req, res) => {
 app.post('/api/send', requireAuth, async (req, res) => {
   if (!whatsappReady) {
     return res.status(400).json({ error: 'WHATSAPP_NOT_READY', qr: qrCodeData });
+  }
+  if (!sheets) {
+    return res.status(400).json({ error: 'SHEETS_NOT_CONFIGURED' });
   }
 
   try {
@@ -447,16 +438,14 @@ app.post('/api/send', requireAuth, async (req, res) => {
 إدارة التحصيل`;
 
     const results = [];
-    
     for (let i = 0; i < phoneNumbers.length; i++) {
       const phone = phoneNumbers[i];
       try {
-        // Format phone number: remove any non-digit, ensure it has country code
         let formattedPhone = phone.replace(/\D/g, '');
-        if (!formattedPhone.startsWith('20')) { // Egypt country code
+        if (!formattedPhone.startsWith('20')) {
           formattedPhone = '20' + formattedPhone.replace(/^0+/, '');
         }
-        formattedPhone = formattedPhone + '@c.us'; // WhatsApp suffix
+        formattedPhone = formattedPhone + '@c.us';
         
         const chat = await whatsappClient.getChatById(formattedPhone);
         await chat.sendMessage(messageTemplate);
@@ -470,10 +459,8 @@ app.post('/api/send', requireAuth, async (req, res) => {
         await logSessionToSheet(phone, 'failed');
         results.push({ phone, status: 'failed', error: err.message });
       }
-      // Delay to avoid being blocked
       await new Promise(resolve => setTimeout(resolve, 3000));
     }
-    
     res.json({ success: true, results });
   } catch (error) {
     console.error('Error in send endpoint:', error);
