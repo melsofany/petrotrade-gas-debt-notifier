@@ -1,1 +1,19 @@
-{"name": "petrotrade-gas-debt-notifier", "version": "1.0.0", "description": "A notifier for gas debt in Petrotrade", "main": "index.js", "scripts": {"test": "echo 'Error: no test specified' && exit 1"}, "repository": {"type": "git", "url": "git+https://github.com/melsofany/petrotrade-gas-debt-notifier.git"}, "author": "melsofany", "license": "ISC"}
+{
+  "name": "gas-debt-notifier",
+  "version": "1.0.0",
+  "description": "WhatsApp sender dashboard",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "express": "^4.17.1",
+    "puppeteer": "^10.1.0",
+    "googleapis": "^39.2.0",
+    "whatsapp-web.js": "^1.17.1"
+  },
+  "devDependencies": {},
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
