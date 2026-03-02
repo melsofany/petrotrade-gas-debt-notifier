@@ -19,7 +19,7 @@ app.use(session({
   secret: process.env.SESSION_SECRET || 'secret-key-change-in-production',
   resave: false,
   saveUninitialized: true,
-  cookie: { secure: false } // set to true if using HTTPS
+  cookie: { secure: false }
 }));
 
 // Authentication middleware
@@ -41,7 +41,11 @@ async function initGoogleSheets() {
     spreadsheetId = process.env.SPREADSHEET_ID;
 
     if (!base64Key || !spreadsheetId) {
-      console.warn('WARNING: Missing GOOGLE_SERVICE_ACCOUNT_BASE64 or SPREADSHEET_ID. Google Sheets integration will be disabled.');
+      console.warn('WARNING: Missing GOOGLE_SERVICE_ACCOUNT_BASE64 or SPREADSHEET_ID.');
+      console.log('Environment check:', {
+        hasKey: !!base64Key,
+        hasId: !!spreadsheetId
+      });
       return;
     }
     
@@ -58,7 +62,6 @@ async function initGoogleSheets() {
     console.log('Google Sheets initialized');
   } catch (error) {
     console.error('Failed to initialize Google Sheets:', error);
-    // Don't exit process, just disable sheets
     sheets = null;
   }
 }
@@ -72,10 +75,29 @@ async function initWhatsApp() {
   try {
     let sessionPath = path.join(__dirname, '.wwebjs_auth');
     
+    // Explicitly find Chrome path on Render
+    let executablePath = '';
+    if (process.env.RENDER) {
+      // Common paths for Puppeteer installed browsers on Render
+      const possiblePaths = [
+        '/opt/render/.cache/puppeteer/chrome/linux-145.0.7632.77/chrome-linux64/chrome',
+        '/usr/bin/google-chrome',
+        '/usr/bin/chromium-browser'
+      ];
+      for (const p of possiblePaths) {
+        if (fs.existsSync(p)) {
+          executablePath = p;
+          console.log('Found Chrome at:', p);
+          break;
+        }
+      }
+    }
+
     whatsappClient = new Client({
       authStrategy: new LocalAuth({ dataPath: sessionPath }),
       puppeteer: { 
-        headless: true, 
+        headless: true,
+        executablePath: executablePath || undefined,
         args: [
           '--no-sandbox', 
           '--disable-setuid-sandbox',
@@ -118,7 +140,6 @@ async function initWhatsApp() {
   }
 }
 
-// Function to backup session data to environment variable
 function backupSessionToEnv() {
   const sessionPath = path.join(__dirname, '.wwebjs_auth', 'session');
   if (fs.existsSync(sessionPath)) {
@@ -132,7 +153,7 @@ function backupSessionToEnv() {
     const base64 = Buffer.from(JSON.stringify(sessionData)).toString('base64');
     console.log('==================================================');
     console.log('WHATSAPP_SESSION_BASE64 (save this as env variable):');
-    console.log(base64.substring(0, 100) + '...'); // Only log start to avoid clutter
+    console.log(base64.substring(0, 100) + '...');
     console.log('==================================================');
   }
 }
