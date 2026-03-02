@@ -94,17 +94,33 @@ async function initWhatsApp() {
       ]
     };
 
-    // If running on Render, try to use the system installed Chrome/Chromium
+    // If running on Render, try to find Chrome in local cache or system
     if (process.env.RENDER) {
+      const localCachePath = path.join(__dirname, '.puppeteer_cache');
       const possiblePaths = [
         '/usr/bin/google-chrome',
         '/usr/bin/chromium-browser',
         '/usr/bin/chromium'
       ];
+
+      // Scan local cache for chrome
+      try {
+        if (fs.existsSync(localCachePath)) {
+          const chromeDir = path.join(localCachePath, 'chrome');
+          if (fs.existsSync(chromeDir)) {
+            const versions = fs.readdirSync(chromeDir);
+            for (const v of versions) {
+              const p = path.join(chromeDir, v, 'chrome-linux64', 'chrome');
+              if (fs.existsSync(p)) possiblePaths.unshift(p); // Prefer local cache
+            }
+          }
+        }
+      } catch (e) { console.error('Error scanning local cache:', e); }
+
       for (const p of possiblePaths) {
         if (fs.existsSync(p)) {
           puppeteerOptions.executablePath = p;
-          console.log('Using system Chrome at:', p);
+          console.log('Found Chrome at:', p);
           break;
         }
       }
