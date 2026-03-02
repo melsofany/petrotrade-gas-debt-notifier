@@ -18,6 +18,6 @@
     "whatsapp-web.js": "^1.21.0"
   },
   "engines": {
-    "node": ">=16"
+    "node": ">=20"
   }
 }
